@@ -17,6 +17,7 @@ interface SpinState {
   isSpinning: boolean;
   winner: string | null;
   timestamp: number;
+  shouldRefresh?: boolean;
 }
 
 function cleanupClients() {
@@ -142,10 +143,19 @@ export async function POST() {
       currentWinner = null;
       currentRotation += 360 * 10 + Math.floor(Math.random() * 720);
       lastUpdateTime = Date.now();
-      spinEndTime = Date.now() + 5000; // Set end time instead of using setTimeout
+      spinEndTime = Date.now() + 5000;
       
       console.log('[POST] New rotation:', currentRotation);
-      broadcastToClients(createStateMessage());
+      
+      // Send refresh signal to all clients
+      if (process.env.NODE_ENV === 'production') {
+        broadcastToClients({
+          ...createStateMessage(),
+          shouldRefresh: true
+        });
+      } else {
+        broadcastToClients(createStateMessage());
+      }
 
       return NextResponse.json({ message: 'Wheel is spinning', rotation: currentRotation });
     } catch (error) {

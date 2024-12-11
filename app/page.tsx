@@ -36,6 +36,14 @@ export default function Home() {
       try {
         const data = JSON.parse(event.data);
         console.log('[SSE] Parsed data:', data);
+        
+        // Check for refresh signal
+        if (data.shouldRefresh && process.env.NODE_ENV === 'production') {
+          console.log('[SSE] Refresh signal received, reloading page');
+          window.location.reload();
+          return;
+        }
+        
         setRotation(data.rotation);
         setIsSpinning(data.isSpinning);
         setWinner(data.winner);
@@ -78,13 +86,7 @@ export default function Home() {
         });
         
         console.log('[Spin] Response status:', response.status);
-        if (response.ok) {
-          // Check if we're in production mode
-          if (process.env.NODE_ENV === 'production') {
-            console.log('[Spin] Production mode - refreshing page');
-            window.location.reload();
-          }
-        } else {
+        if (!response.ok) {
           const errorData = await response.json();
           console.error('[Spin] Error response:', errorData);
           setError(errorData.message || 'Error spinning the wheel');
