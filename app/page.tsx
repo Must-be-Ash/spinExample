@@ -13,7 +13,7 @@ const mockEntries = [
   'Edward Evans',
   'Fiona Foster'
 ];
-
+// cm
 export default function Home() {
   const [rotation, setRotation] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
