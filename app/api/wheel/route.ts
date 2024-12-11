@@ -3,9 +3,9 @@ import { NextResponse } from 'next/server';
 const clients = new Set<ReadableStreamDefaultController>();
 let currentRotation = 0;
 let isSpinning = false;
+let spinTimeout: NodeJS.Timeout | null = null;
 
 function cleanupClients() {
-  // Convert Set to Array for iteration and filtering
   const activeClients = Array.from(clients).filter(client => client.desiredSize !== null);
   clients.clear();
   activeClients.forEach(client => clients.add(client));
@@ -15,15 +15,25 @@ function cleanupClients() {
 function broadcastToClients(message: string) {
   const activeClients = cleanupClients();
   activeClients.forEach(client => {
-    client.enqueue(message);
+    try {
+      client.enqueue(message);
+    } catch (error) {
+      console.error('Failed to broadcast to client:', error);
+      clients.delete(client);
+    }
   });
+}
+
+function createStateMessage() {
+  return `data: ${JSON.stringify({ rotation: currentRotation, isSpinning })}\n\n`;
 }
 
 export async function GET() {
   const stream = new ReadableStream({
     start(controller) {
       clients.add(controller);
-      controller.enqueue(`data: ${JSON.stringify({ rotation: currentRotation, isSpinning })}\n\n`);
+      // Immediately send current state to new client
+      controller.enqueue(createStateMessage());
     },
     cancel() {
       cleanupClients();
@@ -33,25 +43,48 @@ export async function GET() {
   return new NextResponse(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-transform',
       'Connection': 'keep-alive',
     },
   });
 }
 
 export async function POST() {
+  // Clear any existing timeout
+  if (spinTimeout) {
+    clearTimeout(spinTimeout);
+    spinTimeout = null;
+  }
+
   if (!isSpinning) {
-    isSpinning = true;
-    currentRotation += 360 * 10 + Math.floor(Math.random() * 720);
-    
-    broadcastToClients(`data: ${JSON.stringify({ rotation: currentRotation, isSpinning })}\n\n`);
+    try {
+      isSpinning = true;
+      currentRotation += 360 * 10 + Math.floor(Math.random() * 720);
+      
+      // Broadcast initial spin state
+      broadcastToClients(createStateMessage());
 
-    setTimeout(() => {
+      // Set timeout for spin completion
+      spinTimeout = setTimeout(() => {
+        isSpinning = false;
+        broadcastToClients(createStateMessage());
+        spinTimeout = null;
+      }, 5000);
+
+      return NextResponse.json({ 
+        message: 'Wheel is spinning',
+        rotation: currentRotation,
+        isSpinning: true 
+      });
+    } catch (error) {
+      console.error('Error during spin:', error);
       isSpinning = false;
-      broadcastToClients(`data: ${JSON.stringify({ rotation: currentRotation, isSpinning })}\n\n`);
-    }, 5000);
-
-    return NextResponse.json({ message: 'Wheel is spinning' });
+      if (spinTimeout) {
+        clearTimeout(spinTimeout);
+        spinTimeout = null;
+      }
+      return NextResponse.json({ message: 'Error spinning wheel' }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ message: 'Wheel is already spinning' }, { status: 400 });

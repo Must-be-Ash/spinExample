@@ -21,9 +21,14 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let eventSource: EventSource;
+    let eventSource: EventSource | null = null;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
     
     const connectSSE = () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+
       eventSource = new EventSource('/api/wheel');
       
       eventSource.onmessage = (event) => {
@@ -39,10 +44,19 @@ export default function Home() {
       };
 
       eventSource.onerror = () => {
-        console.error('SSE error');
-        eventSource.close();
-        // Try to reconnect after a short delay
-        setTimeout(connectSSE, 1000);
+        console.error('SSE connection error');
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        
+        // Clear any existing reconnect timeout
+        if (reconnectTimeout) {
+          clearTimeout(reconnectTimeout);
+        }
+        
+        // Try to reconnect after a delay
+        reconnectTimeout = setTimeout(connectSSE, 1000);
       };
     };
 
@@ -52,13 +66,22 @@ export default function Home() {
       if (eventSource) {
         eventSource.close();
       }
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
     };
   }, []);
 
   const handleSpin = async () => {
     if (!isSpinning) {
       try {
-        const response = await fetch('/api/wheel', { method: 'POST' });
+        const response = await fetch('/api/wheel', { 
+          method: 'POST',
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        });
+        
         if (response.ok) {
           setWinner(null);
           setError(null);
