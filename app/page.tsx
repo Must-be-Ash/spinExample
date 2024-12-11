@@ -25,27 +25,35 @@ export default function Home() {
     let reconnectTimeout: NodeJS.Timeout | null = null;
     
     const connectSSE = () => {
+      console.log('[SSE] Connecting to event source');
       if (eventSource) {
+        console.log('[SSE] Closing existing connection');
         eventSource.close();
       }
 
       eventSource = new EventSource('/api/wheel');
       
+      eventSource.onopen = () => {
+        console.log('[SSE] Connection opened');
+      };
+      
       eventSource.onmessage = (event) => {
+        console.log('[SSE] Received message:', event.data);
         try {
           const data = JSON.parse(event.data);
+          console.log('[SSE] Parsed data:', data);
           setRotation(data.rotation);
           setIsSpinning(data.isSpinning);
           setWinner(data.winner);
           setError(null);
         } catch (err) {
-          console.error('Error parsing SSE data:', err);
+          console.error('[SSE] Error parsing data:', err);
           setError('Error receiving updates. Please refresh the page.');
         }
       };
 
-      eventSource.onerror = () => {
-        console.error('SSE connection error');
+      eventSource.onerror = (error) => {
+        console.error('[SSE] Connection error:', error);
         if (eventSource) {
           eventSource.close();
           eventSource = null;
@@ -55,6 +63,7 @@ export default function Home() {
           clearTimeout(reconnectTimeout);
         }
         
+        console.log('[SSE] Scheduling reconnect');
         reconnectTimeout = setTimeout(connectSSE, 1000);
       };
     };
@@ -62,6 +71,7 @@ export default function Home() {
     connectSSE();
 
     return () => {
+      console.log('[SSE] Cleaning up connection');
       if (eventSource) {
         eventSource.close();
       }
@@ -73,6 +83,7 @@ export default function Home() {
 
   const handleSpin = async () => {
     if (!isSpinning) {
+      console.log('[Spin] Initiating spin');
       try {
         const response = await fetch('/api/wheel', { 
           method: 'POST',
@@ -81,12 +92,14 @@ export default function Home() {
           }
         });
         
+        console.log('[Spin] Response status:', response.status);
         if (!response.ok) {
           const errorData = await response.json();
+          console.error('[Spin] Error response:', errorData);
           setError(errorData.message || 'Error spinning the wheel');
         }
       } catch (err) {
-        console.error('Error spinning the wheel:', err);
+        console.error('[Spin] Request error:', err);
         setError('Error spinning the wheel. Please try again.');
       }
     }

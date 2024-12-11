@@ -15,40 +15,56 @@ interface SpinState {
 }
 
 function cleanupClients() {
-  const activeClients = Array.from(clients).filter(client => client.desiredSize !== null);
+  console.log(`[Cleanup] Before cleanup: ${clients.size} clients`);
+  const activeClients = Array.from(clients).filter(client => {
+    const isActive = client.desiredSize !== null;
+    if (!isActive) {
+      console.log('[Cleanup] Removing inactive client');
+    }
+    return isActive;
+  });
   clients.clear();
   activeClients.forEach(client => clients.add(client));
+  console.log(`[Cleanup] After cleanup: ${clients.size} clients`);
   return activeClients;
 }
 
 function broadcastToClients(state: SpinState) {
+  console.log('[Broadcast] Sending state:', state);
   const message = `data: ${JSON.stringify(state)}\n\n`;
   const activeClients = cleanupClients();
+  console.log(`[Broadcast] Broadcasting to ${activeClients.length} clients`);
+  
   activeClients.forEach(client => {
     try {
-      client.enqueue(message);
+      client.enqueue(new TextEncoder().encode(message));
+      console.log('[Broadcast] Successfully sent to client');
     } catch (error) {
-      console.error('Failed to broadcast to client:', error);
+      console.error('[Broadcast] Failed to send to client:', error);
       clients.delete(client);
     }
   });
 }
 
 function createStateMessage(): SpinState {
-  return {
+  const state = {
     rotation: currentRotation,
     isSpinning,
     winner: currentWinner,
     timestamp: Date.now()
   };
+  console.log('[State] Current state:', state);
+  return state;
 }
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'edge';
 
 export async function GET() {
-  // Handle potential disconnections
+  console.log('[GET] New connection request');
+  
   if (Date.now() - lastUpdateTime > 10000) {
+    console.log('[GET] Resetting stale state');
     isSpinning = false;
     currentWinner = null;
     if (spinTimeout) {
@@ -59,20 +75,28 @@ export async function GET() {
 
   const stream = new ReadableStream({
     start(controller) {
+      console.log('[Stream] Starting new stream');
       clients.add(controller);
-      // Immediately send current state to new client
-      controller.enqueue(`data: ${JSON.stringify(createStateMessage())}\n\n`);
+      
+      // Send initial state
+      const initialState = createStateMessage();
+      const initialMessage = `data: ${JSON.stringify(initialState)}\n\n`;
+      controller.enqueue(new TextEncoder().encode(initialMessage));
+      console.log('[Stream] Sent initial state');
 
-      // Send keepalive for production environments
+      // Keepalive
       const keepaliveInterval = setInterval(() => {
         try {
-          controller.enqueue(': keepalive\n\n');
-        } catch {
+          controller.enqueue(new TextEncoder().encode(': keepalive\n\n'));
+          console.log('[Stream] Sent keepalive');
+        } catch (error) {
+          console.error('[Stream] Keepalive failed:', error);
           clearInterval(keepaliveInterval);
         }
       }, 15000);
     },
     cancel() {
+      console.log('[Stream] Stream cancelled');
       cleanupClients();
     },
   });
@@ -88,23 +112,28 @@ export async function GET() {
 }
 
 export async function POST() {
+  console.log('[POST] Received spin request');
+  console.log('[POST] Current state:', { isSpinning, currentRotation });
+
   if (spinTimeout) {
+    console.log('[POST] Clearing existing timeout');
     clearTimeout(spinTimeout);
     spinTimeout = null;
   }
 
   if (!isSpinning) {
     try {
+      console.log('[POST] Starting new spin');
       isSpinning = true;
       currentWinner = null;
       currentRotation += 360 * 10 + Math.floor(Math.random() * 720);
       lastUpdateTime = Date.now();
       
-      // Broadcast initial spin state
+      console.log('[POST] New rotation:', currentRotation);
       broadcastToClients(createStateMessage());
 
-      // Set timeout for spin completion
       spinTimeout = setTimeout(() => {
+        console.log('[Timeout] Spin complete');
         isSpinning = false;
         const mockEntries = [
           'John Doe', 'Jane Smith', 'Alice Johnson', 'Bob Williams',
@@ -114,14 +143,14 @@ export async function POST() {
         currentWinner = mockEntries[winnerIndex];
         lastUpdateTime = Date.now();
         
-        // Broadcast final state with winner
+        console.log('[Timeout] Winner selected:', currentWinner);
         broadcastToClients(createStateMessage());
         spinTimeout = null;
       }, 5000);
 
-      return NextResponse.json({ message: 'Wheel is spinning' });
+      return NextResponse.json({ message: 'Wheel is spinning', rotation: currentRotation });
     } catch (error) {
-      console.error('Error during spin:', error);
+      console.error('[POST] Error during spin:', error);
       isSpinning = false;
       currentWinner = null;
       if (spinTimeout) {
@@ -132,5 +161,6 @@ export async function POST() {
     }
   }
 
+  console.log('[POST] Wheel already spinning');
   return NextResponse.json({ message: 'Wheel is already spinning' }, { status: 400 });
 } 
