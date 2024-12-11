@@ -78,12 +78,17 @@ export default function Home() {
         });
         
         console.log('[Spin] Response status:', response.status);
-        if (!response.ok) {
+        if (response.ok) {
+          // Check if we're in production mode
+          if (process.env.NODE_ENV === 'production') {
+            console.log('[Spin] Production mode - refreshing page');
+            window.location.reload();
+          }
+        } else {
           const errorData = await response.json();
           console.error('[Spin] Error response:', errorData);
           setError(errorData.message || 'Error spinning the wheel');
           
-          // If we get a connection error, try to reconnect
           if (response.status === 503) {
             connectSSE();
           }
@@ -91,7 +96,6 @@ export default function Home() {
       } catch (err) {
         console.error('[Spin] Request error:', err);
         setError('Error spinning the wheel. Please try again.');
-        // On error, try to reconnect
         connectSSE();
       }
     } else if (!isConnected) {
