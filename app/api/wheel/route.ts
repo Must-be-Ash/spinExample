@@ -4,6 +4,13 @@ const clients = new Set<ReadableStreamDefaultController>();
 let currentRotation = 0;
 let isSpinning = false;
 let spinTimeout: NodeJS.Timeout | null = null;
+let currentWinner: string | null = null;
+
+interface SpinState {
+  rotation: number;
+  isSpinning: boolean;
+  winner: string | null;
+}
 
 function cleanupClients() {
   const activeClients = Array.from(clients).filter(client => client.desiredSize !== null);
@@ -12,7 +19,8 @@ function cleanupClients() {
   return activeClients;
 }
 
-function broadcastToClients(message: string) {
+function broadcastToClients(state: SpinState) {
+  const message = `data: ${JSON.stringify(state)}\n\n`;
   const activeClients = cleanupClients();
   activeClients.forEach(client => {
     try {
@@ -24,8 +32,12 @@ function broadcastToClients(message: string) {
   });
 }
 
-function createStateMessage() {
-  return `data: ${JSON.stringify({ rotation: currentRotation, isSpinning })}\n\n`;
+function createStateMessage(): SpinState {
+  return {
+    rotation: currentRotation,
+    isSpinning,
+    winner: currentWinner
+  };
 }
 
 export async function GET() {
@@ -33,7 +45,7 @@ export async function GET() {
     start(controller) {
       clients.add(controller);
       // Immediately send current state to new client
-      controller.enqueue(createStateMessage());
+      controller.enqueue(`data: ${JSON.stringify(createStateMessage())}\n\n`);
     },
     cancel() {
       cleanupClients();
@@ -50,7 +62,6 @@ export async function GET() {
 }
 
 export async function POST() {
-  // Clear any existing timeout
   if (spinTimeout) {
     clearTimeout(spinTimeout);
     spinTimeout = null;
@@ -59,6 +70,7 @@ export async function POST() {
   if (!isSpinning) {
     try {
       isSpinning = true;
+      currentWinner = null;
       currentRotation += 360 * 10 + Math.floor(Math.random() * 720);
       
       // Broadcast initial spin state
@@ -67,18 +79,24 @@ export async function POST() {
       // Set timeout for spin completion
       spinTimeout = setTimeout(() => {
         isSpinning = false;
+        // Calculate winner on the server
+        const mockEntries = [
+          'John Doe', 'Jane Smith', 'Alice Johnson', 'Bob Williams',
+          'Charlie Brown', 'Diana Davis', 'Edward Evans', 'Fiona Foster'
+        ];
+        const winnerIndex = Math.floor(((360 - (currentRotation % 360)) / 360) * mockEntries.length);
+        currentWinner = mockEntries[winnerIndex];
+        
+        // Broadcast final state with winner
         broadcastToClients(createStateMessage());
         spinTimeout = null;
       }, 5000);
 
-      return NextResponse.json({ 
-        message: 'Wheel is spinning',
-        rotation: currentRotation,
-        isSpinning: true 
-      });
+      return NextResponse.json({ message: 'Wheel is spinning' });
     } catch (error) {
       console.error('Error during spin:', error);
       isSpinning = false;
+      currentWinner = null;
       if (spinTimeout) {
         clearTimeout(spinTimeout);
         spinTimeout = null;

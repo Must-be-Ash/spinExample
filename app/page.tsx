@@ -36,6 +36,7 @@ export default function Home() {
           const data = JSON.parse(event.data);
           setRotation(data.rotation);
           setIsSpinning(data.isSpinning);
+          setWinner(data.winner);
           setError(null);
         } catch (err) {
           console.error('Error parsing SSE data:', err);
@@ -50,12 +51,10 @@ export default function Home() {
           eventSource = null;
         }
         
-        // Clear any existing reconnect timeout
         if (reconnectTimeout) {
           clearTimeout(reconnectTimeout);
         }
         
-        // Try to reconnect after a delay
         reconnectTimeout = setTimeout(connectSSE, 1000);
       };
     };
@@ -82,10 +81,7 @@ export default function Home() {
           }
         });
         
-        if (response.ok) {
-          setWinner(null);
-          setError(null);
-        } else {
+        if (!response.ok) {
           const errorData = await response.json();
           setError(errorData.message || 'Error spinning the wheel');
         }
@@ -96,16 +92,15 @@ export default function Home() {
     }
   };
 
-  const handleSpinComplete = () => {
-    const winnerIndex = Math.floor(((360 - (rotation % 360)) / 360) * mockEntries.length);
-    setWinner(mockEntries[winnerIndex]);
-  };
-
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
       <h1 className="text-4xl font-bold mb-8">Giveaway Wheel</h1>
       <div className="mb-8">
-        <SpinningWheel entries={mockEntries} rotation={rotation} onSpinComplete={handleSpinComplete} />
+        <SpinningWheel 
+          entries={mockEntries} 
+          rotation={rotation} 
+          onSpinComplete={() => {}}
+        />
       </div>
       <button
         className="px-6 py-2 bg-blue-500 text-white rounded-full font-semibold text-lg disabled:opacity-50"
