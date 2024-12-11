@@ -1,83 +1,52 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import SpinningWheel from '../components/SpinningWheel';
 
 const mockEntries = [
-  'John Doe',
-  'Jane Smith',
-  'Alice Johnson',
-  'Bob Williams',
-  'Charlie Brown',
-  'Diana Davis',
-  'Edward Evans',
-  'Fiona Foster'
+  'John Doe', 'Jane Smith', 'Alice Johnson', 'Bob Williams',
+  'Charlie Brown', 'Diana Davis', 'Edward Evans', 'Fiona Foster'
 ];
-// cm
+
 export default function Home() {
   const [rotation, setRotation] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
   const [winner, setWinner] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const [lastSpinTime, setLastSpinTime] = useState<number | null>(null);
 
-  const connectSSE = useCallback(() => {
-    console.log('[SSE] Connecting to event source');
-    const eventSource = new EventSource('/api/wheel');
-    
-    eventSource.onopen = () => {
-      console.log('[SSE] Connection opened');
-      setIsConnected(true);
-      setError(null);
-    };
-    
-    eventSource.onmessage = (event) => {
-      console.log('[SSE] Received message:', event.data);
+  // Poll for updates
+  useEffect(() => {
+    const pollState = async () => {
       try {
-        const data = JSON.parse(event.data);
-        console.log('[SSE] Parsed data:', data);
+        const response = await fetch('/api/wheel');
+        const data = await response.json();
         
-        // Check for refresh signal
-        if (data.shouldRefresh && process.env.NODE_ENV === 'production') {
-          console.log('[SSE] Refresh signal received, reloading page');
-          window.location.reload();
-          return;
+        // If this is a new spin or we're currently spinning
+        if (data.spinStartTime !== lastSpinTime || data.isSpinning) {
+          console.log('[Poll] State update:', data);
+          setRotation(data.rotation);
+          setIsSpinning(data.isSpinning);
+          setWinner(data.winner);
+          setLastSpinTime(data.spinStartTime);
         }
-        
-        setRotation(data.rotation);
-        setIsSpinning(data.isSpinning);
-        setWinner(data.winner);
-        setError(null);
       } catch (err) {
-        console.error('[SSE] Error parsing data:', err);
-        setError('Error receiving updates. Please refresh the page.');
+        console.error('[Poll] Error:', err);
       }
     };
 
-    eventSource.onerror = (error) => {
-      console.error('[SSE] Connection error:', error);
-      setIsConnected(false);
-      eventSource.close();
-      
-      // Try to reconnect after a delay
-      setTimeout(connectSSE, 1000);
-    };
+    // Poll every 100ms
+    const pollInterval = setInterval(pollState, 100);
 
-    return eventSource;
-  }, []);
-
-  useEffect(() => {
-    const eventSource = connectSSE();
     return () => {
-      console.log('[SSE] Cleaning up connection');
-      eventSource.close();
+      clearInterval(pollInterval);
     };
-  }, [connectSSE]);
+  }, [lastSpinTime]);
 
   const handleSpin = async () => {
-    if (!isSpinning && isConnected) {
-      console.log('[Spin] Initiating spin');
+    if (!isSpinning) {
       try {
+        setError(null);
         const response = await fetch('/api/wheel', { 
           method: 'POST',
           headers: {
@@ -85,31 +54,17 @@ export default function Home() {
           }
         });
         
-        console.log('[Spin] Response status:', response.status);
-        if (response.ok && process.env.NODE_ENV === 'production') {
-          // Add a small delay before refreshing to ensure the state is updated
-          setTimeout(() => {
-            console.log('[Spin] Refreshing page after successful spin');
-            window.location.reload();
-          }, 100);
-        } else if (!response.ok) {
+        if (!response.ok) {
           const errorData = await response.json();
-          console.error('[Spin] Error response:', errorData);
           setError(errorData.message || 'Error spinning the wheel');
-          
-          if (response.status === 503) {
-            connectSSE();
-          }
+        } else {
+          const data = await response.json();
+          setLastSpinTime(data.spinStartTime);
         }
       } catch (err) {
-        console.error('[Spin] Request error:', err);
+        console.error('[Spin] Error:', err);
         setError('Error spinning the wheel. Please try again.');
-        connectSSE();
       }
-    } else if (!isConnected) {
-      console.log('[Spin] Attempting to reconnect before spinning');
-      connectSSE();
-      setError('Connecting to server... Please try again in a moment.');
     }
   };
 
@@ -126,9 +81,9 @@ export default function Home() {
       <button
         className="px-6 py-2 bg-blue-500 text-white rounded-full font-semibold text-lg disabled:opacity-50"
         onClick={handleSpin}
-        disabled={isSpinning || !isConnected}
+        disabled={isSpinning}
       >
-        {!isConnected ? 'Connecting...' : isSpinning ? 'Spinning...' : 'Spin the Wheel'}
+        {isSpinning ? 'Spinning...' : 'Spin the Wheel'}
       </button>
       {winner && (
         <div className="mt-8 text-2xl font-semibold">
