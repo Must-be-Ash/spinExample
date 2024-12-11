@@ -22,31 +22,40 @@ export default function Home() {
         const response = await fetch('/api/wheel');
         const data = await response.json();
         
-        // If this is a new spin or we're currently spinning
-        if (data.spinStartTime !== lastSpinTime || data.isSpinning) {
+        // If this is a new spin or we're currently spinning or we have a winner
+        if (data.spinStartTime !== lastSpinTime || data.isSpinning || data.winner) {
           console.log('[Poll] State update:', data);
           setRotation(data.rotation);
           setIsSpinning(data.isSpinning);
           setWinner(data.winner);
           setLastSpinTime(data.spinStartTime);
+
+          // Log spin completion
+          if (!data.isSpinning && data.winner) {
+            console.log('[Poll] Spin completed, winner:', data.winner);
+          }
         }
       } catch (err) {
         console.error('[Poll] Error:', err);
       }
     };
 
-    // Poll every 100ms
-    const pollInterval = setInterval(pollState, 100);
+    // Poll more frequently during spins
+    const pollInterval = setInterval(pollState, isSpinning ? 100 : 500);
+
+    // Initial poll
+    pollState();
 
     return () => {
       clearInterval(pollInterval);
     };
-  }, [lastSpinTime]);
+  }, [lastSpinTime, isSpinning]);
 
   const handleSpin = async () => {
     if (!isSpinning) {
       try {
         setError(null);
+        setWinner(null); // Clear previous winner
         const response = await fetch('/api/wheel', { 
           method: 'POST',
           headers: {

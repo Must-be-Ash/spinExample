@@ -17,13 +17,16 @@ interface SpinState {
   winner: string | null;
   timestamp: number;
   spinStartTime: number | null;
+  spinEndTime: number | null;
 }
 
 function createStateMessage(): SpinState {
+  const now = Date.now();
+  
   // Check if spin should be complete
-  if (spinEndTime && Date.now() >= spinEndTime) {
-    isSpinning = false;
-    if (!currentWinner) {
+  if (spinEndTime && now >= spinEndTime) {
+    if (isSpinning) {
+      isSpinning = false;
       const winnerIndex = Math.floor(((360 - (currentRotation % 360)) / 360) * mockEntries.length);
       currentWinner = mockEntries[winnerIndex];
       console.log('[State] Winner selected:', currentWinner);
@@ -34,15 +37,15 @@ function createStateMessage(): SpinState {
     rotation: currentRotation,
     isSpinning,
     winner: currentWinner,
-    timestamp: Date.now(),
-    spinStartTime
+    timestamp: now,
+    spinStartTime,
+    spinEndTime
   };
 }
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'edge';
 
-// New endpoint to get current state
 export async function GET() {
   return NextResponse.json(createStateMessage());
 }
