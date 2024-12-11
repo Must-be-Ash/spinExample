@@ -1,5 +1,3 @@
-'use client';
-
 import { useState, useEffect } from 'react';
 import SpinningWheel from '../components/SpinningWheel';
 
@@ -21,37 +19,26 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let eventSource: EventSource;
-    
-    const connectSSE = () => {
-      eventSource = new EventSource('/api/wheel');
-      
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          setRotation(data.rotation);
-          setIsSpinning(data.isSpinning);
-          setError(null);
-        } catch (err) {
-          console.error('Error parsing SSE data:', err);
-          setError('Error receiving updates. Please refresh the page.');
-        }
-      };
-
-      eventSource.onerror = () => {
-        console.error('SSE error');
-        eventSource.close();
-        // Try to reconnect after a short delay
-        setTimeout(connectSSE, 1000);
-      };
+    const eventSource = new EventSource('/api/wheel');
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setRotation(data.rotation);
+        setIsSpinning(data.isSpinning);
+        setError(null);
+      } catch (err) {
+        console.error('Error parsing SSE data:', err);
+        setError('Error receiving updates. Please refresh the page.');
+      }
     };
 
-    connectSSE();
+    eventSource.onerror = () => {
+      console.error('SSE error');
+      setError('Error connecting to the server. Please refresh the page.');
+    };
 
     return () => {
-      if (eventSource) {
-        eventSource.close();
-      }
+      eventSource.close();
     };
   }, []);
 
