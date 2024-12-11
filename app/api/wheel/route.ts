@@ -147,17 +147,26 @@ export async function POST() {
       
       console.log('[POST] New rotation:', currentRotation);
       
-      // Send refresh signal to all clients
+      // Always send the refresh signal in production
       if (process.env.NODE_ENV === 'production') {
-        broadcastToClients({
+        const state = {
           ...createStateMessage(),
           shouldRefresh: true
-        });
+        };
+        console.log('[POST] Broadcasting refresh signal:', state);
+        broadcastToClients(state);
       } else {
         broadcastToClients(createStateMessage());
       }
 
-      return NextResponse.json({ message: 'Wheel is spinning', rotation: currentRotation });
+      // Add a small delay before sending the response
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      return NextResponse.json({ 
+        message: 'Wheel is spinning', 
+        rotation: currentRotation,
+        shouldRefresh: process.env.NODE_ENV === 'production'
+      });
     } catch (error) {
       console.error('[POST] Error during spin:', error);
       isSpinning = false;

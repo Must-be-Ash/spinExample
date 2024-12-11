@@ -86,7 +86,13 @@ export default function Home() {
         });
         
         console.log('[Spin] Response status:', response.status);
-        if (!response.ok) {
+        if (response.ok && process.env.NODE_ENV === 'production') {
+          // Add a small delay before refreshing to ensure the state is updated
+          setTimeout(() => {
+            console.log('[Spin] Refreshing page after successful spin');
+            window.location.reload();
+          }, 100);
+        } else if (!response.ok) {
           const errorData = await response.json();
           console.error('[Spin] Error response:', errorData);
           setError(errorData.message || 'Error spinning the wheel');
